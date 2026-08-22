@@ -1,22 +1,33 @@
 import { Worker } from 'bullmq';
+import Redis from 'ioredis';
+import axios from 'axios';
 
-console.log('[Consumer] Worker starting and listening for inventory jobs...');
+// Connect to Redis
+const connection = new Redis({
+  host: '127.0.0.1',
+  port: 6379,
+  maxRetriesPerRequest: null
+});
 
+// Create BullMQ Worker Consumer
 const worker = new Worker(
-  'inventorySync',
+  'badge-print-queue',
   async (job) => {
-    console.log(`[Consumer] Processing job ID: ${job.id}`);
-    console.log(`[Consumer] Syncing SKU: ${job.data.sku} \vert{} Stock:${job.data.stockCount}`);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    return { status: 'synced', sku: job.data.sku };
+    console.log(`[Consumer] Processing print job for attendee: ${job.data.attendeeId}`);
+
+    // Simulate badge printer delay (3 seconds)
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // Send Webhook Callback back to Express Server
+    await axios.post('http://localhost:3000/api/v1/webhooks/print-status', {
+      attendeeId: job.data.attendeeId,
+      printStatus: 'SUCCESS',
+      printedAt: new Date().toISOString()
+    });
+
+    console.log(`[Consumer] Webhook callback sent for attendee: ${job.data.attendeeId}`);
   },
-  { connection: { host: '127.0.0.1', port: 6379 } }
+  { connection }
 );
 
-worker.on('completed', (job) => {
-  console.log(`[Consumer] Job ID ${job.id} successfully completed!`);
-});
-
-worker.on('failed', (job, err) => {
-  console.error(`[Consumer] Job ID ${job?.id} failed:${err.message}`);
-});
+console.log('[Consumer] Worker is running and listening for queue jobs...');
